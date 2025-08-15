@@ -1,7 +1,7 @@
 import { Contract } from '@hyperledger/fabric-gateway';
 import { TextDecoder } from 'util';
 import { createGatewayConnection, channelName, chaincodeName } from './connect';
-import { runVcDemo } from './vc-demo';
+//import { runVcDemo } from './vc-demo';
 import { run } from './database_handler';
 
 const utf8Decoder = new TextDecoder();
@@ -9,15 +9,15 @@ const utf8Decoder = new TextDecoder();
 
 async function main(): Promise<void> {
 
-    //await run().catch(console.dir);
+    await run().catch(console.dir);
 
 
+    //await runVcDemo();
     
     process.exit();
     
 
 
-    await runVcDemo();
         
     // Establish the connection with the gateway and retrieve client and gateway objects.
     const { gateway, client } = await createGatewayConnection();

@@ -1,109 +1,95 @@
 import { MongoClient, ObjectId } from 'mongodb';
+import { randomUUID } from 'crypto';
 
-// Connection URI
+// URI de Conexão
 const uri = 'mongodb://root:password@localhost:27017/?authSource=admin';
 
-// Create a new MongoClient
+// Cria um novo MongoClient
 const client = new MongoClient(uri);
 
-interface VerifiableCredential {
-    '@context': string[];
-    id: string;
-    type: string[];
-    issuer: string;
-    issuanceDate: string;
-    credentialSubject: {
-        id: string;
-        degree: {
-            type: string;
-            name: string;
-        };
-    };
-    proof: {
-        type: string;
-        created: string;
-        proofPurpose: string;
-        verificationMethod: string;
-        jws: string;
-    };
+/**
+ * Interface para o registro de uma credencial de custódia no MongoDB.
+ * Este schema armazena o JWT da credencial e metadados para busca e vinculação.
+ */
+interface CustodyCredentialRecord {
     _id?: ObjectId;
+    evidencehash: string;
+    credentialId: string;
+    vcJwt: string;
+    previousCredentialId: string | null;
+    sequence: number;
+    status: 'active' | 'revoked' | 'analyzed';
+    issuerDid: string;
+    createdAt: Date;
+    tags: string[];
 }
-
 
 export async function run() {
     try {
-        // Connect the client to the server
+        // Conecta o cliente ao servidor
         await client.connect();
-        console.log('Connected successfully to MongoDB');
+        console.log('Conectado com sucesso ao MongoDB');
 
-        const database = client.db('verifiable_credentials_db');
-        const credentials = database.collection<VerifiableCredential>('credentials');
+        const database = client.db('chain_of_custody_db');
+        const records = database.collection<CustodyCredentialRecord>('evidence_records');
 
-        // 1. CREATE a new Verifiable Credential
+        // --- 1. CREATE: Cria um novo registro de credencial de custódia ---
         console.log('\n--- CREATE ---');
-        const newCredential: VerifiableCredential = {
-            "@context": [
-                "https://www.w3.org/2018/credentials/v1",
-                "https://www.w3.org/2018/credentials/examples/v1"
-            ],
-            "id": "http://example.edu/credentials/3732",
-            "type": ["VerifiableCredential", "UniversityDegreeCredential"],
-            "issuer": "https://example.edu/issuers/14",
-            "issuanceDate": "2020-03-10T04:24:12.164Z",
-            "credentialSubject": {
-                "id": "did:example:ebfeb1f712ebc6f1c276e12ec21",
-                "degree": {
-                    "type": "BachelorDegree",
-                    "name": "Bachelor of Science and Arts"
-                }
-            },
-            "proof": {
-                "type": "RsaSignature2018",
-                "created": "2020-03-10T04:24:12.164Z",
-                "proofPurpose": "assertionMethod",
-                "verificationMethod": "https://example.edu/issuers/14#key-1",
-                "jws": "eyJhbGciOiJSUzI1NiIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19..TCYt5X"
-            }
+        const newRecord: CustodyCredentialRecord = {
+            evidencehash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+            credentialId: `urn:uuid:${randomUUID()}`,
+            // Exemplo de um JWT (JSON Web Token) que conteria a Verifiable Credential
+            vcJwt: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJ2YyI6eyJAY29udGV4dCI6WyJodHRwczovL3d3dy53My5vcmcvMjAxOC9jcmVkZW50aWFscy92MSJdLCJ0eXBlIjpbIlZlcmlmaWFibGVDcmVkZW50aWFsIiwiRXZpZGVuY2UiXSwiY3JlZGVudGlhbFN1YmplY3QiOnsic3RhdHVzIjoiYWN0aXZlIiwicHJldmlvdXNfY3JlZGVudGlhbF9pZCI6bnVsbH19fQ.signature_placeholder",
+            previousCredentialId: null,
+            sequence: 1,
+            status: "active",
+            issuerDid: "did:key:z6MkjdEnsDwsVCpnRBgQDwwRe3LYMJ89tvgSLae3qkYuJc5x",
+            createdAt: new Date(),
+            tags: ["coleta", "hd_externo", "caso_157-2025"]
         };
 
-        const createResult = await credentials.insertOne(newCredential);
-        console.log(`New credential created with the following id: ${createResult.insertedId}`);
+        const createResult = await records.insertOne(newRecord);
+        console.log(`Novo registro de custódia criado com o seguinte id: ${createResult.insertedId}`);
 
-        // 2. READ the created credential
+        // --- 2. READ: Lê o registro recém-criado ---
         console.log('\n--- READ ---');
-        const foundCredential = await credentials.findOne({ _id: createResult.insertedId });
-        if (foundCredential) {
-            console.log('Found credential:');
-            console.log(JSON.stringify(foundCredential, null, 2));
+        const foundRecord = await records.findOne({ _id: createResult.insertedId });
+        if (foundRecord) {
+            console.log('Registro encontrado:');
+            // Nota: O JWT é uma string longa, então o output pode ser grande.
+            console.log(JSON.stringify(foundRecord, null, 2));
         } else {
-            console.log('Credential not found.');
+            console.log('Registro não encontrado.');
         }
 
-        // 3. UPDATE the credential
+        // --- 3. UPDATE: Atualiza o status do registro e adiciona uma tag ---
         console.log('\n--- UPDATE ---');
-        const updateResult = await credentials.updateOne(
+        const updateResult = await records.updateOne(
             { _id: createResult.insertedId },
-            { $set: { "credentialSubject.degree.name": "Bachelor of Innovation in Technology" } }
+            { 
+                $set: { status: "analyzed" },
+                $push: { tags: "analise_concluida" }
+            }
         );
-        console.log(`${updateResult.modifiedCount} document(s) was/were updated.`);
-        const updatedCredential = await credentials.findOne({ _id: createResult.insertedId });
-        if (updatedCredential) {
-            console.log('Updated credential:');
-            console.log(JSON.stringify(updatedCredential, null, 2));
+        console.log(`${updateResult.modifiedCount} documento(s) foi/foram atualizado(s).`);
+        
+        const updatedRecord = await records.findOne({ _id: createResult.insertedId });
+        if (updatedRecord) {
+            console.log('Registro atualizado:');
+            console.log(JSON.stringify(updatedRecord, null, 2));
         }
 
-
-        // 4. DELETE the credential
+        // --- 4. DELETE: Deleta o registro ---
         console.log('\n--- DELETE ---');
-        const deleteResult = await credentials.deleteOne({ _id: createResult.insertedId });
-        console.log(`${deleteResult.deletedCount} document(s) was/were deleted.`);
-        const deletedCredential = await credentials.findOne({ _id: createResult.insertedId });
-        console.log(deletedCredential ? 'Deletion failed.' : 'Credential successfully deleted.');
-
+        const deleteResult = await records.deleteOne({ _id: createResult.insertedId });
+        console.log(`${deleteResult.deletedCount} documento(s) foi/foram deletado(s).`);
+        
+        const deletedRecord = await records.findOne({ _id: createResult.insertedId });
+        console.log(deletedRecord ? 'Falha na deleção.' : 'Registro deletado com sucesso.');
 
     } finally {
-        // Ensures that the client will close when you finish/error
+        // Garante que o cliente fechará ao finalizar ou ocorrer um erro
         await client.close();
-        console.log('\nConnection to MongoDB closed.');
+        console.log('\nConexão com o MongoDB fechada.');
     }
 }

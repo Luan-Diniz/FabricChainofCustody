@@ -42,14 +42,20 @@ export async function runVcDemo(): Promise<void> {
     // ******** Definindo o payload da VC *********
     const vcPayload = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
-        type: ['VerifiableCredential', 'UniversityDegree'],
+        type: ['VerifiableCredential', 'Evidence'],
         issuer: issuer.did, // O DID do emissor
         issuanceDate: new Date().toISOString(), // Data no formato ISO 8601
         credentialSubject: {
             id: 'did:example:ebfeb1f712ebc6f1c276e12ec21',
-            degree: {
-                type: 'BachelorDegree',
-                name: 'Computer Science'
+            status: 'active',
+            previous_credential_id: null,
+            evidence_record: {
+                what: "Um HD externo da marca Seagate, modelo Expansion, capacidade de 2TB, S/N: NA8K9J7H, cor preta. O dispositivo foi encontrado conectado a um desktop.",
+                who: "Coletado pelo Perito Policial Tiago Bastos (ID Funcional 9845-B), na presença das testemunhas arroladas no Termo de Apreensão.",
+                where: "No escritório de um apartamento residencial localizado na Rua Lauro Linhares, 1200, Apto 501, Trindade, Florianópolis - SC.",
+                when: "Apreendido no dia 15 de agosto de 2025, exatamente às 15:47 (horário de Brasília), durante o cumprimento de um mandado de busca e apreensão.",
+                why: "Para ser submetido à análise forense digital, pois há suspeita de que armazene planilhas de contabilidade e documentos relacionados a uma investigação de lavagem de dinheiro.",
+                how: "O dispositivo foi desconectado de forma segura do computador, fotografado, acondicionado em embalagem antiestática e lacrado com o lacre de segurança número SP-SC-08152025-007. Todo o processo foi documentado no formulário de cadeia de custódia."
             }
         },
     };
