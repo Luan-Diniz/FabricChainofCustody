@@ -1,5 +1,5 @@
 
-export async function create_evidence(issuer_did: string): Promise<void> {
+export async function create_evidence(issuer_did: string, owner_did: string): Promise<void> {
     // Preciso do did de quem fizer a operação --> ele será o owner.
 
     // Creates credential and store in database.
