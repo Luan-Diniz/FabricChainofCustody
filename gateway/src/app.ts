@@ -1,5 +1,6 @@
 import { Contract } from '@hyperledger/fabric-gateway';
 import { TextDecoder } from 'util';
+import { createHash } from 'crypto';
 import { createGatewayConnection, channelName, chaincodeName } from './connect';
 //import { runVcDemo } from './vc-handler';
 import { createIssuer, createCredentialId} from './util';
@@ -30,8 +31,8 @@ async function main(): Promise<void> {
 
 
     const my_subject = {
-            did_owner: OWNER_DID,
             id: credentialId,
+            evidence_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
             previous_credential_id: null,
             evidence_record: {
                 what: "Um HD externo da marca Seagate, modelo Expansion, capacidade de 2TB, S/N: NA8K9J7H, cor preta. O dispositivo foi encontrado conectado a um desktop.",
@@ -43,13 +44,13 @@ async function main(): Promise<void> {
             }
         };
 
-    const newRecordData: Omit<CustodyCredentialRecord, '_id'> = {
-                evidencehash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+    const RecordData: Omit<CustodyCredentialRecord, '_id'> = {
+                evidencehash: "",    // Will be copied from the credential.
                 credentialId: credentialId,
                 vcJwt: "",
                 previousCredentialId: null,
-                last_modifier_did: OWNER_DID,
-                sequence: 1,
+                last_modifier_did: "",
+                sequence: null,
                 status: "active",
                 issuerDid: issuer.did,
                 ownerDid: OWNER_DID,
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
                 tags: ["coleta", "hd_externo", "caso_157-2025"]
     };
 
+    await dbHandler.connect();
 
     try {
         // Get a network instance representing the channel where the smart contract is deployed.
@@ -65,19 +67,57 @@ async function main(): Promise<void> {
         // Retrieve the smart contract from the network.
         const contract = network.getContract(chaincodeName);
 
-        await create_evidence(my_subject, issuer,  dbHandler, newRecordData, contract);
+        // *************** DEMO ***********************
+        await create_evidence(my_subject, issuer,  dbHandler, RecordData, contract);
         await readAssetByID(contract, credentialId);
-        await dbHandler.connect();
         console.log(await dbHandler.findRecordByCredentialId(credentialId));
-        await dbHandler.disconnect();
+
         await transfer_evidence_ownership(credentialId, OWNER2_DID, dbHandler, contract);
         await readAssetByID(contract, credentialId);
-        await dbHandler.connect();
-        console.log(await dbHandler.findRecordByCredentialId(credentialId));
-        await dbHandler.disconnect();
 
+        console.log(await dbHandler.findRecordByCredentialId(credentialId));
+        
+        // Creating another credential for testing update.
+        const newcredentialId = await createCredentialId();
+        const new_my_subject = {
+            id: newcredentialId,
+            evidence_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+            previous_credential_id: null,
+            evidence_record: {
+                what: "Novo what.",
+                who: "Novo who.",
+                where: "Novo where.",
+                when: "Novo when.",
+                why: "Novo why.",
+                how: "Novo how."
+            }
+        };
+        const newRecordData: Omit<CustodyCredentialRecord, '_id'> = {
+                    evidencehash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+                    credentialId: newcredentialId,
+                    vcJwt: "",
+                    previousCredentialId: null,
+                    last_modifier_did: "",
+                    sequence: null,
+                    status: "active",
+                    issuerDid: issuer.did,
+                    ownerDid: OWNER_DID,
+                    createdAt: new Date(),
+                    tags: ["coleta", "hd_externo", "caso_157-2025"]
+        };
+        const old_credential_did = credentialId;
+        await update_evidence(old_credential_did, new_my_subject, issuer, dbHandler, newRecordData, contract);
+        await readAssetByID(contract, newcredentialId);
+        console.log(await dbHandler.findRecordByCredentialId(newcredentialId));
+        
+        
+        
+        
+        
+        
     } finally {
         // Close the connection with the gateway and gRPC client.
+        await dbHandler.disconnect();
         gateway.close();
         client.close();
     }
@@ -94,49 +134,77 @@ main().catch((error: unknown) => {
 
 async function create_evidence(
                 subject_data: CredentialSubjectData, issuer: Issuer,
-                dbHandler: DatabaseHandler, newRecordData: CustodyCredentialRecord, contract: Contract): Promise<string> {
+                dbHandler: DatabaseHandler, RecordData: CustodyCredentialRecord, contract: Contract): Promise<string> {
 
         // Creates credential and store in database.
         const vcJwt = await createCredential(subject_data, issuer);
-        newRecordData.vcJwt = vcJwt;
+        RecordData.vcJwt = vcJwt;
+        RecordData.last_modifier_did = RecordData.ownerDid;
+        RecordData.sequence = 1;
+        RecordData.evidencehash = subject_data.evidence_hash;
         // Ver se os dados estão sendo preenchidos corretamente!!
 
-        try {
-            await dbHandler.connect();
-            await dbHandler.createRecord(newRecordData);
 
-        } catch (error) {
-            console.error("Ocorreu um erro durante a execução:", error);
-        } finally {
-            await dbHandler.disconnect();
-        }
+        await dbHandler.createRecord(RecordData);
 
+        const credentialHash = createHash('sha256').update(vcJwt).digest('hex');
         // Stores some data in blockchain.
-        await createAsset(contract, newRecordData.credentialId, newRecordData.ownerDid, newRecordData.issuerDid);
+        await createAsset(contract, RecordData.credentialId, RecordData.ownerDid, RecordData.issuerDid, credentialHash);
 
 
-        return newRecordData.credentialId;
+        return RecordData.credentialId;
 }
 
 async function transfer_evidence_ownership(credential_id: string, new_owner_did: string, dbHandler: DatabaseHandler, contract: Contract): Promise<void> {
     //  Change owner --> in blockchain data and db data.
     // Muda o owner, mas não o "last_modifier_did" --> deveria estar na blockchain tbm?
-        try {
-            await dbHandler.connect();
-            await dbHandler.updateRecordOwner(credential_id, new_owner_did);
+    await dbHandler.updateRecordOwner(credential_id, new_owner_did);
 
-            // blockchain operation
-            await transferOwnership(contract, credential_id, new_owner_did);
+    // blockchain operation
+    await transferOwnership(contract, credential_id, new_owner_did);
 
-        } catch (error) {
-            // Undo changes somehow.
-            console.error("Ocorreu um erro durante a execução:", error);
-        } finally {
-            await dbHandler.disconnect();
-        }
 }
 
+async function update_evidence(old_credential_did: string,
+                subject_data: CredentialSubjectData, issuer: Issuer,
+                dbHandler: DatabaseHandler, newRecordData: CustodyCredentialRecord, contract: Contract): Promise<void> { 
 
+                    // Need to calculate the sequence number!!!!
+
+                    const credential_record = await dbHandler.findRecordByCredentialId(old_credential_did);
+                    if (credential_record?.sequence) {
+                        newRecordData.sequence = credential_record.sequence + 1;
+                    }
+
+
+                    // Create new credential.
+                    const vcJwt = await createCredential(subject_data, issuer);
+                    newRecordData.vcJwt = vcJwt;
+                    newRecordData.evidencehash = subject_data.evidence_hash;
+                    newRecordData.last_modifier_did = newRecordData.ownerDid;
+                    newRecordData.previousCredentialId = old_credential_did;
+
+
+                    await dbHandler.createRecord(newRecordData);
+
+                    const credentialHash = createHash('sha256').update(vcJwt).digest('hex');
+                    // Stores data of the new credential in blockchain.
+                    await createAsset(contract, newRecordData.credentialId, newRecordData.ownerDid, newRecordData.issuerDid, credentialHash);
+
+                    
+
+                    // Change status of old credential in database
+
+                    await dbHandler.updateRecordStatus(old_credential_did, "revoked");
+                    
+                    // Change status of old credential in blockchain.
+                    await revokeAsset(contract, old_credential_did);
+
+
+
+}
+
+// async function get_chain_of_custody
 
 
 
@@ -169,7 +237,7 @@ async function getAllAssets(contract: Contract): Promise<void> {
  * Create a new credential with dummy but valid parameters
  * assetID is the credential ID (did)
  */
-async function createAsset(contract: Contract, assetID: string, owner_did: string, issuer_did: string): Promise<void> {
+async function createAsset(contract: Contract, assetID: string, owner_did: string, issuer_did: string, credential_hash: string): Promise<void> {
     console.log('\n--> Submit Transaction: CreateAsset, creates a new credential');
 
     const status = 'active';
@@ -181,7 +249,8 @@ async function createAsset(contract: Contract, assetID: string, owner_did: strin
         status,
         issuer_did,
         owner_did,
-        timestamp
+        credential_hash,
+        timestamp,
     );
 
     console.log(`*** Credential ${assetID} successfully created`);
@@ -213,6 +282,7 @@ async function transferOwnership(contract: Contract, assetId: string, newOwnerDi
 
 /**
  * Revoke an existing credential
+*/
 async function revokeAsset(contract: Contract, assetId: string): Promise<void> {
     console.log('\n--> Submit Transaction: RevokeAsset, changes status to revoked');
     
@@ -220,7 +290,6 @@ async function revokeAsset(contract: Contract, assetId: string): Promise<void> {
     
     console.log(`*** Credential ${assetId} successfully revoked`);
 }
-*/
 
 
 /**

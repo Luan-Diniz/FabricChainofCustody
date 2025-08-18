@@ -10,7 +10,7 @@ export interface CustodyCredentialRecord {
     vcJwt: string;
     previousCredentialId: string | null;
     last_modifier_did: string;
-    sequence: number;
+    sequence: null | number;
     status: 'active' | 'revoked';
     issuerDid: string;
     ownerDid: string;
