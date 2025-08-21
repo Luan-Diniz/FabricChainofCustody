@@ -7,6 +7,7 @@ import { createCredential, CredentialSubjectData } from './vc-handler';
 import type { Issuer } from 'did-jwt-vc' with { 'resolution-mode': 'import' };
 
 import { DatabaseHandler, CustodyCredentialRecord } from './database-handler';
+//simport { log } from 'console';
 
 const utf8Decoder = new TextDecoder();
 
@@ -66,12 +67,12 @@ async function main(): Promise<void> {
         // *************** DEMO ***********************
         await create_evidence(my_subject, issuer,  dbHandler, RecordData, contract);
         await readAssetByID(contract, credentialId);
-        console.log(await dbHandler.findRecordByCredentialId(credentialId));
+        //console.log(await dbHandler.findRecordByCredentialId(credentialId));
 
         await transfer_evidence_ownership(credentialId, OWNER2_DID, dbHandler, contract);
         await readAssetByID(contract, credentialId);
 
-        console.log(await dbHandler.findRecordByCredentialId(credentialId));
+        //console.log(await dbHandler.findRecordByCredentialId(credentialId));
         
         // Creating another credential for testing update.
         const newcredentialId = await createCredentialId();
@@ -103,10 +104,30 @@ async function main(): Promise<void> {
         };
         const old_credential_did = credentialId;
         await update_evidence(old_credential_did, new_my_subject, issuer, dbHandler, newRecordData, contract);
-        await readAssetByID(contract, newcredentialId);
-        console.log(await dbHandler.findRecordByCredentialId(newcredentialId));
+
+        const actual_credential_id = await await get_credential_id_by_evidence_hash(EVIDENCE_HASH ,dbHandler);
+        if (actual_credential_id){
+            const chain_of_custody = await get_chain_of_custody(actual_credential_id, dbHandler, contract);
+
+            // ********************************* PRINT CHAIN OF CUSTODY ******************************************
+            console.log("\n--- INÍCIO DA CADEIA DE CUSTÓDIA ---");
+            // Itera sobre cada elo da cadeia
+            chain_of_custody.forEach((link, index) => {
+                console.log(`\n------------------ Elo ${index + 1} ------------------`);
+                // Imprime o registro do banco de dados de forma legível
+                console.log("\n[+] Registro do Banco de Dados:");
+                console.log(JSON.stringify(link.databaseRecord, null, 2));
+                // Imprime os dados do ledger de forma legível
+                console.log("\n[+] Dados do Ledger (Blockchain):");
+                console.log(JSON.stringify(link.ledgerData, null, 2));
+            });
+            console.log("\n------------------ FIM DA CADEIA ------------------\n");
+        }
         
-        console.log(await get_credential_id_by_evidence_hash(EVIDENCE_HASH ,dbHandler));
+       // console.log('*** Raw Result from Ledger:', await readAssetByID(contract, newcredentialId));
+        //console.log(await dbHandler.findRecordByCredentialId(newcredentialId));
+        
+        //console.log(await get_credential_id_by_evidence_hash(EVIDENCE_HASH ,dbHandler));
         
         
         
@@ -196,10 +217,68 @@ async function update_evidence(old_credential_did: string,
                     await revokeAsset(contract, old_credential_did);
 }
 
-//async function get_chain_of_custody(credential_id: string): Promise<void> {
+
+/*
+
+ async function verify_chain_of_custody
+
+*/
 
 
-//]
+ 
+/**
+ * Retrieves the entire chain of custody for a given credential ID.
+ * It traverses the credential history by recursively looking up the previous credential ID.
+ * @param {string} credential_id The starting credential ID.
+ * @param {DatabaseHandler} dbHandler An instance of the database handler to fetch credential records.
+ * @param {Contract} contract The contract instance to interact with the ledger.
+ * @returns {Promise<Array<{databaseRecord: CustodyCredentialRecord, ledgerData: Asset}>>} A promise that resolves with a list of tuples, 
+ * where each tuple contains the typed database record and the corresponding typed ledger data.
+ */
+async function get_chain_of_custody(credential_id: string, dbHandler: DatabaseHandler, contract: Contract): Promise<Array<{databaseRecord: CustodyCredentialRecord, ledgerData: Asset}>> {
+    // This list will store the combined data from the database and the ledger.
+    const chainOfCustody: Array<{databaseRecord: CustodyCredentialRecord, ledgerData: Asset}> = [];
+    
+    // Start with the initial credential ID provided.
+    let current_cred_id: string | null = credential_id;
+    
+    do {
+        // Fetch the record from your local database.
+        const cred_record = await dbHandler.findRecordByCredentialId(current_cred_id) as CustodyCredentialRecord;
+        
+        // Fetch the corresponding asset data from the ledger, now strongly typed.
+        const ledger_data = await readAssetByID(contract, current_cred_id);
+        
+        // Store the combined results as an object in our list.
+        chainOfCustody.push({ 
+            databaseRecord: cred_record, 
+            ledgerData: ledger_data 
+        });
+        
+        // Check if a previous credential exists to continue the chain.
+        if (cred_record && cred_record.previousCredentialId) {
+            current_cred_id = cred_record.previousCredentialId;
+        } else if (cred_record) {
+            // If there's a record but no previous ID, the chain ends here.
+            current_cred_id = null;
+        } 
+        else {
+            // If no record is found at all, the chain is broken.
+            throw new Error(`The chain of custody is broken. Could not find a record for credential ID: ${current_cred_id}`);
+        }
+    
+    } while (current_cred_id);
+
+    // Return the complete list of records.
+    return chainOfCustody;
+}
+
+
+
+
+    
+    
+
 
 
 
@@ -218,7 +297,7 @@ async function get_credential_id_by_evidence_hash(evidence_hash: string, dbHandl
  * assetID is the credential ID (did)
  */
 async function createAsset(contract: Contract, assetID: string, owner_did: string, issuer_did: string, credential_hash: string): Promise<void> {
-    console.log('\n--> Submit Transaction: CreateAsset, creates a new credential');
+    //console.log('\n--> Submit Transaction: CreateAsset, creates a new credential');
 
     const status = 'active';
     const timestamp = new Date().toISOString();
@@ -233,40 +312,61 @@ async function createAsset(contract: Contract, assetID: string, owner_did: strin
         timestamp,
     );
 
-    console.log(`*** Credential ${assetID} successfully created`);
+    //console.log(`*** Credential ${assetID} successfully created`);
 }
 
+
+interface Asset {
+    status: string;
+    timestamp: string;
+    owner_did: string;
+    issuer_did: string;
+    credential_id: string;
+    credential_hash: string;
+    last_modifier_did: string;
+}
 /**
- * Read a credential by ID
-*/
-async function readAssetByID(contract: Contract, assetId: string): Promise<void> {
-    console.log('\n--> Evaluate Transaction: ReadAsset, returns credential attributes');
+ * Reads a credential by its ID from the ledger and returns it as a typed Asset object.
+ * @param {Contract} contract The contract instance.
+ * @param {string} assetId The ID of the asset to read.
+ * @returns {Promise<Asset>} A promise that resolves with the typed asset object.
+ */
+async function readAssetByID(contract: Contract, assetId: string): Promise<Asset> {
+
+    // console.log(`\n--> Evaluate Transaction: ReadAsset for ID: ${assetId}`);
+    
     
     const resultBytes = await contract.evaluateTransaction('ReadAsset', assetId);
     
     const resultJson = utf8Decoder.decode(resultBytes);
-    const result: unknown = JSON.parse(resultJson);
-    console.log('*** Result:', result);
+    // We cast the parsed JSON to our Asset interface to get type safety.
+    const result = JSON.parse(resultJson) as Asset;
+    
+
+    //console.log('*** Typed Result:', result);
+    
+
+    return result;
 }
 
 /**
  * TransferOwnership
 */
 async function transferOwnership(contract: Contract, assetId: string, newOwnerDid: string): Promise<void> {
-    console.log('\n--> Submit Transaction: transferOwnership');
+    //console.log('\n--> Submit Transaction: transferOwnership');
     
     await contract.submitTransaction('TransferOwnership', assetId, newOwnerDid);
     
-    console.log(`*** Credential ${assetId} owner changed to ${newOwnerDid}`);
+    //console.log(`*** Credential ${assetId} owner changed to ${newOwnerDid}`);
 }
 
 /**
  * Revoke an existing credential
 */
 async function revokeAsset(contract: Contract, assetId: string): Promise<void> {
-    console.log('\n--> Submit Transaction: RevokeAsset, changes status to revoked');
+    //console.log('\n--> Submit Transaction: RevokeAsset, changes status to revoked');
     
     await contract.submitTransaction('RevokeAsset', assetId);
     
-    console.log(`*** Credential ${assetId} successfully revoked`);
+    //console.log(`*** Credential ${assetId} successfully revoked`);
 }

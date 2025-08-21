@@ -48,8 +48,8 @@ export async function createCredential(subject_data: CredentialSubjectData,
     // 4. Criar e assinar a VC no formato JWT
     const vcJwt = await createVerifiableCredentialJwt(vcPayload, issuer);
     
-    console.log('\n✅ Credencial JWT gerada com sucesso!');
-    console.log(vcJwt);
+    //console.log('\n✅ Credencial JWT gerada com sucesso!');
+    //console.log(vcJwt);
 
     return vcJwt;
 }
