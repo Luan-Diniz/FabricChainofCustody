@@ -1,4 +1,4 @@
-// src/vc-demo.ts
+
 
 // Dizendo ao TS para usar a resolução de módulos ES para encontrar este tipo.
 // Esta é a correção para o erro de 'resolution-mode'.

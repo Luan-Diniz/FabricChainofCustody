@@ -91,6 +91,27 @@ export class DatabaseHandler {
         );
     }
 
+        /**
+     * Finds the active credential ID for a given evidence hash.
+     * Assumes that only one credential for a given evidence hash can be active at any time.
+     * @param evidencehash The hash of the evidence to search for.
+     * @returns The credentialId of the active record, or null if no active record is found.
+     */
+    public async findActiveCredentialByEvidenceHash(evidencehash: string): Promise<string | null> {
+        if (!this.recordsCollection) {
+            throw new Error("A coleção não foi inicializada. Chame connect() primeiro.");
+        }
+
+        // Find the one document that matches the hash and has an 'active' status.
+        const record = await this.recordsCollection.findOne({
+            evidencehash: evidencehash,
+            status: 'active'
+        });
+
+        // If a record is found, return its credentialId, otherwise return null.
+        return record ? record.credentialId : null;
+    }
+
     /**
      * Updates a record's owner DID.
      * @param credential_id The credentialId of the record to update.
@@ -108,17 +129,6 @@ export class DatabaseHandler {
                 $set: { ownerDid: newOwnerDid },
             }
         );
-    }
-
-    /**
-     * Deletes a record by its ObjectId.
-     * @param id The ObjectId of the record to delete.
-     * @returns The number of deleted documents.
-     */
-    public async deleteRecord(id: ObjectId): Promise<number> {
-        if (!this.recordsCollection) throw new Error("A coleção não foi inicializada. Chame connect() primeiro.");
-        const result = await this.recordsCollection.deleteOne({ _id: id });
-        return result.deletedCount;
     }
 }
 

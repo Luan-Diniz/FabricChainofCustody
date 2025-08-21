@@ -2,24 +2,20 @@ import { Contract } from '@hyperledger/fabric-gateway';
 import { TextDecoder } from 'util';
 import { createHash } from 'crypto';
 import { createGatewayConnection, channelName, chaincodeName } from './connect';
-//import { runVcDemo } from './vc-handler';
 import { createIssuer, createCredentialId} from './util';
 import { createCredential, CredentialSubjectData } from './vc-handler';
-import type { Issuer } from 'did-jwt-vc' with { 'resolution-mode': 'import' };;
-//import type { DIDDocument } from 'did-resolver' with { 'resolution-mode': 'import' };;
+import type { Issuer } from 'did-jwt-vc' with { 'resolution-mode': 'import' };
 
 import { DatabaseHandler, CustodyCredentialRecord } from './database-handler';
-//import { runVcDemo } from './vc-demo';
-//import { run } from './database_handler';
 
 const utf8Decoder = new TextDecoder();
-//const assetId = `asset${String(Date.now())}`;
 
 async function main(): Promise<void> {
 
     // Establish the connection with the gateway and retrieve client and gateway objects.
     const { gateway, client } = await createGatewayConnection();
 
+    const EVIDENCE_HASH = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
     const OWNER_DID = 'did:example:owner';
     const OWNER2_DID = 'did:example:owner2';
     const uri = 'mongodb://root:password@localhost:27017/?authSource=admin';
@@ -32,7 +28,7 @@ async function main(): Promise<void> {
 
     const my_subject = {
             id: credentialId,
-            evidence_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+            evidence_hash: EVIDENCE_HASH,
             previous_credential_id: null,
             evidence_record: {
                 what: "Um HD externo da marca Seagate, modelo Expansion, capacidade de 2TB, S/N: NA8K9J7H, cor preta. O dispositivo foi encontrado conectado a um desktop.",
@@ -81,7 +77,7 @@ async function main(): Promise<void> {
         const newcredentialId = await createCredentialId();
         const new_my_subject = {
             id: newcredentialId,
-            evidence_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+            evidence_hash: EVIDENCE_HASH,
             previous_credential_id: null,
             evidence_record: {
                 what: "Novo what.",
@@ -93,7 +89,7 @@ async function main(): Promise<void> {
             }
         };
         const newRecordData: Omit<CustodyCredentialRecord, '_id'> = {
-                    evidencehash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+                    evidencehash: EVIDENCE_HASH,
                     credentialId: newcredentialId,
                     vcJwt: "",
                     previousCredentialId: null,
@@ -110,7 +106,7 @@ async function main(): Promise<void> {
         await readAssetByID(contract, newcredentialId);
         console.log(await dbHandler.findRecordByCredentialId(newcredentialId));
         
-        
+        console.log(await get_credential_id_by_evidence_hash(EVIDENCE_HASH ,dbHandler));
         
         
         
@@ -128,7 +124,6 @@ main().catch((error: unknown) => {
     console.error('******** FAILED to run the application:', error);
     process.exitCode = 1;
 });
-
 
 
 
@@ -199,39 +194,24 @@ async function update_evidence(old_credential_did: string,
                     
                     // Change status of old credential in blockchain.
                     await revokeAsset(contract, old_credential_did);
-
-
-
 }
 
-// async function get_chain_of_custody
+//async function get_chain_of_custody(credential_id: string): Promise<void> {
+
+
+//]
 
 
 
-
-/**
- * Initialize ledger with dummy data from chaincode's InitLedger
-async function initLedger(contract: Contract): Promise<void> {
-    console.log('\n--> Submit Transaction: InitLedger, creates initial credentials');
+async function get_credential_id_by_evidence_hash(evidence_hash: string, dbHandler: DatabaseHandler) : Promise<string | null> {
+    const credential_id = await dbHandler.findActiveCredentialByEvidenceHash(evidence_hash);
     
-    await contract.submitTransaction('InitLedger');
-    
-    console.log('*** Transaction successfully committed');
+    return credential_id;
 }
-*/
 
-/**
- * Query all assets
-async function getAllAssets(contract: Contract): Promise<void> {
-    console.log('\n--> Evaluate Transaction: GetAllAssets, returns all credentials');
-    
-    const resultBytes = await contract.evaluateTransaction('GetAllAssets');
-    
-    const resultJson = utf8Decoder.decode(resultBytes);
-    const result: unknown = JSON.parse(resultJson);
-    console.log('*** Result:', result);
-}
-*/
+
+
+
 
 /**
  * Create a new credential with dummy but valid parameters
@@ -290,46 +270,3 @@ async function revokeAsset(contract: Contract, assetId: string): Promise<void> {
     
     console.log(`*** Credential ${assetId} successfully revoked`);
 }
-
-
-/**
- * Update an existing credential with dummy values
-async function updateAsset(contract: Contract): Promise<void> {
-    console.log('\n--> Submit Transaction: UpdateAsset, updates an existing credential');
-    
-    const assetId = 'cred-dummy';
-    const status = 'revoked';
-    const issuerDID = 'did:example:issuer-updated';
-    const timestamp = new Date().toISOString();
-    
-    await contract.submitTransaction(
-        'UpdateAsset',
-        assetId,
-        status,
-        issuerDID,
-        timestamp
-    );
-    
-    console.log(`*** Credential ${assetId} successfully updated`);
-}
-*/
-
-/**
- * Test updating a non-existent credential — should throw an error
-async function updateNonExistentAsset(contract: Contract): Promise<void> {
-    console.log('\n--> Submit Transaction: UpdateAsset on non-existent credential');
-    
-    try {
-        await contract.submitTransaction(
-            'UpdateAsset',
-            'nonexistent-cred',
-            'active',
-            'did:example:issuer-fake',
-            new Date().toISOString()
-        );
-        console.log('******** FAILED to return an error');
-    } catch (error) {
-        console.log('*** Caught expected error: \n', error);
-    }
-}
-*/

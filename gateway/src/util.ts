@@ -14,7 +14,7 @@ export async function createIssuer(): Promise<IssuerData> {
     
     const { didDocument, keys } = await ed25519.generate(
         {
-            secureRandom: () => randomBytes(32),
+            secureRandom: () => randomBytes(32),      // ao inves de randomBytes(32), passar senha ou algo assim //PBKDF2, SCRYPT
         },
         { accept: 'application/did+json' }
     );

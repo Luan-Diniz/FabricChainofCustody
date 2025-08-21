@@ -72,45 +72,6 @@ func (s *SmartContract) TransferOwnership(ctx contractapi.TransactionContextInte
 }
 
 
-// UpdateAsset atualiza uma credencial existente.
-// O parâmetro credentialHash foi adicionado.
-func (s *SmartContract) UpdateAsset(ctx contractapi.TransactionContextInterface, credentialID string, status string, issuerDID string, ownerDID string, credentialHash string, modifierDID string, timestamp string) error {
-	exists, err := s.AssetExists(ctx, credentialID)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return fmt.Errorf("a credencial %s não existe", credentialID)
-	}
-
-	asset := Asset{
-		CredentialID:    credentialID,
-		Status:          status,
-		IssuerDID:       issuerDID,
-		OwnerDID:        ownerDID,
-		CredentialHash:  credentialHash, // Alteração: Inclui o hash na atualização.
-		Timestamp:       timestamp,
-		LastModifierDID: modifierDID, // Lógica revertida para a original, usando o parâmetro.
-	}
-	assetJSON, err := json.Marshal(asset)
-	if err != nil {
-		return err
-	}
-	return ctx.GetStub().PutState(credentialID, assetJSON)
-}
-
-// DeleteAsset remove uma credencial do ledger.
-func (s *SmartContract) DeleteAsset(ctx contractapi.TransactionContextInterface, credentialID string) error {
-	exists, err := s.AssetExists(ctx, credentialID)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return fmt.Errorf("a credencial %s não existe", credentialID)
-	}
-	return ctx.GetStub().DelState(credentialID)
-}
-
 // RevokeAsset altera o status de uma credencial para "revoked".
 func (s *SmartContract) RevokeAsset(ctx contractapi.TransactionContextInterface, credentialID string) error {
 	asset, err := s.ReadAsset(ctx, credentialID)
