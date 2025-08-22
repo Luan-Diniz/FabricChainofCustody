@@ -3,8 +3,8 @@ import { TextDecoder } from 'util';
 import { createHash } from 'crypto';
 import { createGatewayConnection, channelName, chaincodeName } from './connect';
 import { createIssuer, createCredentialId} from './util';
-import { createCredential, CredentialSubjectData } from './vc-handler';
-import type { Issuer } from 'did-jwt-vc' with { 'resolution-mode': 'import' };
+import { createCredential, CredentialSubjectData, verifyCreatedCredential } from './vc-handler';
+import type { Issuer, VerifiedCredential } from 'did-jwt-vc' with { 'resolution-mode': 'import' };
 
 import { DatabaseHandler, CustodyCredentialRecord } from './database-handler';
 //simport { log } from 'console';
@@ -122,7 +122,17 @@ async function main(): Promise<void> {
                 console.log(JSON.stringify(link.ledgerData, null, 2));
             });
             console.log("\n------------------ FIM DA CADEIA ------------------\n");
+
+
+            const payload = await verify_chain_of_custody(chain_of_custody);
+
+            console.log("\n ----------------- PAYLOADS ------------------------")
+            console.log(payload);
+            console.log("\n ----------------- FIM DOS PAYLOADS ------------------------")
         }
+
+
+
         
        // console.log('*** Raw Result from Ledger:', await readAssetByID(contract, newcredentialId));
         //console.log(await dbHandler.findRecordByCredentialId(newcredentialId));
@@ -218,11 +228,47 @@ async function update_evidence(old_credential_did: string,
 }
 
 
-/*
 
- async function verify_chain_of_custody
 
-*/
+ async function verify_chain_of_custody(chain_of_custody: Array<{databaseRecord: CustodyCredentialRecord, ledgerData: Asset}>) 
+    : Promise<Array<VerifiedCredential>> {
+        // Use um laço for...of para iterar sobre a cadeia
+
+    let payloads: Array<VerifiedCredential> = [];
+
+    for (const [index, link] of chain_of_custody.entries()) {
+        try {
+            // 1. Verificar se o hash da credencial corresponde ao que está no ledger
+            const calculatedHash = createHash('sha256').update(link.databaseRecord.vcJwt).digest('hex');
+
+            if (link.ledgerData.credential_id !== link.databaseRecord.credentialId) {
+                throw new Error(`Credentials id do not match at index ${index}.`);
+            }
+
+            if (calculatedHash !== link.ledgerData.credential_hash) {
+                // Lança um erro específico se o hash não corresponder
+                throw new Error(`Hash mismatch for credential at index ${index}.`);
+            }
+
+            // 2. Verificar a autenticidade e integridade da credencial JWT
+            // 'await' aqui irá pausar o laço, como esperado.
+            const verified_credential = await verifyCreatedCredential(link.databaseRecord.vcJwt);
+            payloads.push(verified_credential);
+            
+
+        } catch (error: any) {
+            // Captura erros tanto da verificação de hash quanto da verificação da credencial
+            console.error(`Failed to verify credential ${index} in the chain of custody:`, error.message);
+            // Propaga o erro para interromper a verificação da cadeia
+            throw error; 
+        }
+    }
+
+    return payloads;
+
+ }
+
+
 
 
  
